@@ -11,6 +11,8 @@ import json
 import asyncio
 from urllib.parse import quote
 import base64
+import os
+from openai import OpenAI
 
 # CONFIG
 SECRET_KEY = "change-this-secret-key-in-production"
@@ -252,19 +254,70 @@ async def generate_board(request: Request, user_id: int = Depends(get_current_us
         conn.close()
         raise HTTPException(status_code=400, detail="No attempts remaining")
 
-    # Generate all 9 images concurrently
-    image_data_list = await asyncio.gather(*[fetch_image_as_base64(i) for i in range(9)])
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    name = user["name"].split()[0]
 
-    # DEBUG
-    print(f"Generated {len([x for x in image_data_list if x])} out of 9 images")
-    for i, img in enumerate(image_data_list):
-        print(f"Image {i+1}: {'OK' if img else 'FAILED'}")
+    # Step 1 — GPT-4o mini generates a rich prompt
+    prompt_messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a creative vision board designer. "
+                "Given a person's answers, create a detailed image generation prompt "
+                "for a beautiful 3x3 vision board grid. "
+                "Each panel should be clearly separated and visually distinct. "
+                "Make it colorful, inspiring, feminine, and empowering. "
+                "Return ONLY the image prompt, nothing else."
+            )
+        },
+        {
+            "role": "user",
+            "content": f"""Create a vision board image prompt for {name} with these 9 panels in a 3x3 grid:
+
+Panel 1 (top-left): Skill to master - {form_data.get('skill', '')}
+Panel 2 (top-center): Dream role - {form_data.get('role', '')}
+Panel 3 (top-right): Top strengths - {form_data.get('strengths', '')}
+Panel 4 (mid-left): Core values - {form_data.get('values', '')}
+Panel 5 (mid-center): Dream place - {form_data.get('place', '')}
+Panel 6 (mid-right): Superpower at work - {form_data.get('superpower', '')}
+Panel 7 (bottom-left): Outside work goal - {form_data.get('outside_work', '')}
+Panel 8 (bottom-center): Cause/mission - {form_data.get('cause', '')}
+Panel 9 (bottom-right): Message to future self - {form_data.get('future_self', '')}
+
+Make it a single cohesive 3x3 grid image. Each panel beautifully illustrated, 
+with a small label at the bottom of each panel. Warm, feminine, inspiring colors.
+Perfect for a Women's Day vision board."""
+        }
+    ]
+
+    text_response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=prompt_messages,
+        max_tokens=500
+    )
+    image_prompt = text_response.choices[0].message.content
+    print(f"Generated prompt: {image_prompt}")
+
+    # Step 2 — GPT Image 1 generates the vision board
+    image_response = client.images.generate(
+        model="gpt-image-1",
+        prompt=image_prompt,
+        size="1024x1024",
+        quality="medium",
+        n=1,
+    )
+
+    # GPT Image 1 returns base64
+    image_base64 = image_response.data[0].b64_json
+    image_url = f"data:image/png;base64,{image_base64}"
+
+    print("Vision board image generated successfully!")
 
     # Save board to database
     title = f"{user['name']}'s Vision Board"
     conn.execute(
         "INSERT INTO vision_boards (user_id, title, form_data, image_urls) VALUES (?, ?, ?, ?)",
-        (user_id, title, json.dumps(form_data), json.dumps(image_data_list))
+        (user_id, title, json.dumps(form_data), json.dumps([image_url]))
     )
 
     # Decrease attempts
@@ -281,11 +334,10 @@ async def generate_board(request: Request, user_id: int = Depends(get_current_us
 
     return {
         "title": title,
-        "image_urls": image_data_list,
+        "image_urls": [image_url],
         "attempts_remaining": updated_user["attempts_remaining"],
         "form_data": form_data,
     }
-
 
 @app.get("/")
 def root():
