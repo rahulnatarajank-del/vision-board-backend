@@ -52,7 +52,7 @@ def init_db():
             email TEXT UNIQUE NOT NULL,
             hashed_password TEXT NOT NULL,
             is_first_login INTEGER DEFAULT 1,
-            attempts_remaining INTEGER DEFAULT 5,
+            attempts_remaining INTEGER DEFAULT 3,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
