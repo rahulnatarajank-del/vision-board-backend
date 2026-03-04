@@ -24,7 +24,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
     "http://localhost:3000",
-    "https://merry-mochi-6c8c59.netlify.app",
+    "https://womensdayvisionboard.netlify.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
