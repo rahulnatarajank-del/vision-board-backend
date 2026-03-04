@@ -267,6 +267,9 @@ async def generate_board(request: Request, user_id: int = Depends(get_current_us
                 "for a beautiful 3x3 vision board grid. "
                 "Each panel should be clearly separated and visually distinct. "
                 "Make it colorful, inspiring, feminine, and empowering. "
+                "IMPORTANT: For the text labels in each panel, use very short 1-2 word labels only. "
+                "Keep all text extremely simple and short to avoid spelling errors. "
+                "Focus more on beautiful illustrations and less on text inside the image. "
                 "Return ONLY the image prompt, nothing else."
             )
         },
