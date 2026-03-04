@@ -345,32 +345,6 @@ async def generate_board(request: Request, user_id: int = Depends(get_current_us
         "form_data": form_data,
     }
 
-@app.post("/admin/fix-default-attempts")
-def fix_default_attempts():
-    conn = get_db()
-    # Update all existing users to 3
-    conn.execute("UPDATE users SET attempts_remaining = 3")
-    # Fix the default for future users
-    conn.execute("ALTER TABLE users RENAME TO users_old")
-    conn.execute("""
-        CREATE TABLE users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            hashed_password TEXT NOT NULL,
-            is_first_login INTEGER DEFAULT 1,
-            attempts_remaining INTEGER DEFAULT 3,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.execute("""
-        INSERT INTO users SELECT * FROM users_old
-    """)
-    conn.execute("DROP TABLE users_old")
-    conn.commit()
-    conn.close()
-    return {"message": "All users reset to 3 and default changed to 3!"}
-
 @app.get("/")
 def root():
     return {"message": "Women's Day Vision Board API is running!"}
