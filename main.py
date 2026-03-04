@@ -262,16 +262,21 @@ async def generate_board(request: Request, user_id: int = Depends(get_current_us
         {
             "role": "system",
             "content": (
-                "You are a creative vision board designer. "
-                "Given a person's answers, create a detailed image generation prompt "
-                "for a beautiful 3x3 vision board grid. "
-                "Each panel should be clearly separated and visually distinct. "
-                "Make it colorful, inspiring, feminine, and empowering. "
-                "IMPORTANT: Do NOT include any text, words, or labels inside the image at all. "
-                "Only use illustrations, symbols and imagery — no text whatsoever. "
-                "Make each panel very specific and relatable to the person's actual answer. "
-                "Use warm feminine colors like pink, peach, gold and soft purple. "
-                "Return ONLY the image prompt, nothing else."
+                "You are an expert AI image prompt engineer specializing in vision boards. "
+                "Your job is to convert a person's answers into an extremely detailed, vivid, "
+                "cinematic image generation prompt for a 3x3 vision board grid. "
+                "For each panel you must: "
+                "1. Understand the person's answer deeply "
+                "2. Create a specific, emotional, cinematic scene that represents it "
+                "3. Describe the scene with rich visual details - lighting, colors, mood, composition "
+                "4. Make it feel personal and relatable to an Indian woman "
+                "Rules: "
+                "- NO text, NO words, NO letters anywhere in the image "
+                "- All panels separated by thin rose gold borders "
+                "- Consistent warm feminine palette: pink, peach, rose gold, cream, warm gold "
+                "- Style: modern digital painting, dreamy, cinematic, highly detailed "
+                "- Each panel must be emotionally powerful and specific to the answer "
+                "- Return ONLY the final image prompt, nothing else"
             )
         },
         {
