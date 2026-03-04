@@ -267,9 +267,10 @@ async def generate_board(request: Request, user_id: int = Depends(get_current_us
                 "for a beautiful 3x3 vision board grid. "
                 "Each panel should be clearly separated and visually distinct. "
                 "Make it colorful, inspiring, feminine, and empowering. "
-                "IMPORTANT: For the text labels in each panel, use very short 1-2 word labels only. "
-                "Keep all text extremely simple and short to avoid spelling errors. "
-                "Focus more on beautiful illustrations and less on text inside the image. "
+                "IMPORTANT: Do NOT include any text, words, or labels inside the image at all. "
+                "Only use illustrations, symbols and imagery — no text whatsoever. "
+                "Make each panel very specific and relatable to the person's actual answer. "
+                "Use warm feminine colors like pink, peach, gold and soft purple. "
                 "Return ONLY the image prompt, nothing else."
             )
         },
@@ -277,19 +278,21 @@ async def generate_board(request: Request, user_id: int = Depends(get_current_us
             "role": "user",
             "content": f"""Create a vision board image prompt for {name} with these 9 panels in a 3x3 grid:
 
-Panel 1 (top-left): Skill to master - {form_data.get('skill', '')}
-Panel 2 (top-center): Dream role - {form_data.get('role', '')}
-Panel 3 (top-right): Top strengths - {form_data.get('strengths', '')}
-Panel 4 (mid-left): Core values - {form_data.get('values', '')}
-Panel 5 (mid-center): Dream place - {form_data.get('place', '')}
-Panel 6 (mid-right): Superpower at work - {form_data.get('superpower', '')}
-Panel 7 (bottom-left): Outside work goal - {form_data.get('outside_work', '')}
-Panel 8 (bottom-center): Cause/mission - {form_data.get('cause', '')}
-Panel 9 (bottom-right): Message to future self - {form_data.get('future_self', '')}
+            Panel 1 (top-left): Illustrate this skill - {form_data.get('skill', '')}
+            Panel 2 (top-center): Illustrate this dream role - {form_data.get('role', '')}
+            Panel 3 (top-right): Illustrate these strengths - {form_data.get('strengths', '')}
+            Panel 4 (mid-left): Illustrate these values - {form_data.get('values', '')}
+            Panel 5 (mid-center): Illustrate this dream place - {form_data.get('place', '')}
+            Panel 6 (mid-right): Illustrate this superpower - {form_data.get('superpower', '')}
+            Panel 7 (bottom-left): Illustrate this goal - {form_data.get('outside_work', '')}
+            Panel 8 (bottom-center): Illustrate this cause - {form_data.get('cause', '')}
+            Panel 9 (bottom-right): Illustrate this feeling - {form_data.get('future_self', '')}
 
-Make it a single cohesive 3x3 grid image. Each panel beautifully illustrated, 
-with a small label at the bottom of each panel. Warm, feminine, inspiring colors.
-Perfect for a Women's Day vision board."""
+            CRITICAL: NO text, NO words, NO labels anywhere in the image.
+            Pure illustrations only. Each panel must be very specific to the answer given.
+            Make it feel personal, warm, feminine and deeply inspiring.
+            Soft pink, peach, gold and purple tones throughout.
+            Perfect for a Women's Day vision board."""
         }
     ]
 
@@ -341,6 +344,32 @@ Perfect for a Women's Day vision board."""
         "attempts_remaining": updated_user["attempts_remaining"],
         "form_data": form_data,
     }
+
+@app.post("/admin/fix-default-attempts")
+def fix_default_attempts():
+    conn = get_db()
+    # Update all existing users to 3
+    conn.execute("UPDATE users SET attempts_remaining = 3")
+    # Fix the default for future users
+    conn.execute("ALTER TABLE users RENAME TO users_old")
+    conn.execute("""
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            hashed_password TEXT NOT NULL,
+            is_first_login INTEGER DEFAULT 1,
+            attempts_remaining INTEGER DEFAULT 3,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        INSERT INTO users SELECT * FROM users_old
+    """)
+    conn.execute("DROP TABLE users_old")
+    conn.commit()
+    conn.close()
+    return {"message": "All users reset to 3 and default changed to 3!"}
 
 @app.get("/")
 def root():
