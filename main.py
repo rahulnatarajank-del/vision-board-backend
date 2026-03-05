@@ -260,28 +260,31 @@ async def generate_board(request: Request, user_id: int = Depends(get_current_us
     # Step 1 — GPT-4o mini generates a rich prompt
     prompt_messages = [
         {
+            # Updated System Prompt for better 3x3 separation
             "role": "system",
             "content": (
-                "You are an expert AI image prompt engineer specializing in vision boards. "
-                "Your job is to convert a person's answers into an extremely detailed, vivid, "
-                "cinematic image generation prompt for a 3x3 vision board grid. "
-                "For each panel you must: "
-                "1. Understand the person's answer deeply "
-                "2. Create a specific, emotional, cinematic scene that represents it "
-                "3. Describe the scene with rich visual details - lighting, colors, mood, composition "
-                "4. Make it feel personal and relatable to an Indian woman "
-                "Rules: "
-                "- NO text, NO words, NO letters anywhere in the image "
-                "- All panels separated by thin rose gold borders "
-                "- Consistent warm feminine palette: pink, peach, rose gold, cream, warm gold "
-                "- Style: modern digital painting, dreamy, cinematic, highly detailed "
-                "- Each panel must be emotionally powerful and specific to the answer "
-                "- Return ONLY the final image prompt, nothing else"
+                "You are an expert at creating 'Grid Collages'. Your goal is to generate a single "
+                "prompt that describes a 3x3 grid of NINE DISTINCT, SEPARATE square panels. "
+                "CRITICAL RULES: "
+                "1. Each panel MUST show a completely different subject based on the user's input. "
+                "2. Use the phrase 'A collection of 9 individual square tiles arranged in a 3x3 grid' at the start. "
+                "3. Describe each tile starting with 'Tile 1: [description]', 'Tile 2: [description]'. "
+                "4. Mention 'thick white borders' or 'rose gold frames' between every tile to prevent blending. "
+                "5. Use a consistent artistic style (e.g., Soft Watercolor or Flat Vector) so they look like a set. "
+                "6. ABSOLUTELY NO TEXT OR NUMBERS."
             )
         },
         {
             "role": "user",
-            "content": f"""Create a vision board image prompt for {name} with these 9 panels in a 3x3 grid:
+            # Updated User Prompt
+            "content": f"""Generate a 3x3 grid collage for {name}. 
+            Each of the 9 squares must be a different composition:
+            - Some should be close-ups of objects (e.g., a laptop, a passport, a heart).
+            - Some should be wide landscapes.
+            - Some should be symbolic illustrations.
+            This prevents the image from looking repetitive. 
+
+            Panels to include:
 
             Panel 1 (top-left): Illustrate this skill - {form_data.get('skill', '')}
             Panel 2 (top-center): Illustrate this dream role - {form_data.get('role', '')}
