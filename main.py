@@ -13,6 +13,9 @@ from urllib.parse import quote
 import base64
 import os
 from openai import OpenAI
+import json
+import io
+from PIL import Image
 
 # CONFIG
 SECRET_KEY = "change-this-secret-key-in-production"
@@ -244,9 +247,28 @@ async def fetch_image_as_base64(index: int) -> str:
 
 
 @app.post("/boards/generate")
+# --- HELPER: Logic for individual panel generation ---
+async def fetch_panel(client, topic, name):
+    # Short, focused prompt for better DALL-E 2 results
+    prompt = (
+        f"A dreamy cinematic digital art illustration of {topic} for {name}. "
+        "Style: Indian feminine aesthetic, soft lighting, rose gold and peach tones, "
+        "highly detailed, NO text, NO words."
+    )
+    # DALL-E 2 (512x512) is ~$0.018 per image
+    response = await asyncio.to_thread(
+        client.images.generate,
+        model="dall-e-2",
+        prompt=prompt,
+        n=1,
+        size="512x512",
+        response_format="b64_json"
+    )
+    return response.data[0].b64_json
+
+@app.post("/boards/generate")
 async def generate_board(request: Request, user_id: int = Depends(get_current_user)):
     form_data = await request.json()
-
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
 
@@ -257,93 +279,47 @@ async def generate_board(request: Request, user_id: int = Depends(get_current_us
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     name = user["name"].split()[0]
 
-    # Step 1 — GPT-4o mini generates a rich prompt
-    prompt_messages = [
-        {
-            # Updated System Prompt for better 3x3 separation
-            "role": "system",
-            "content": (
-                "You are an expert at creating 'Grid Collages'. Your goal is to generate a single "
-                "prompt that describes a 3x3 grid of NINE DISTINCT, SEPARATE square panels. "
-                "CRITICAL RULES: "
-                "1. Each panel MUST show a completely different subject based on the user's input. "
-                "2. Use the phrase 'A collection of 9 individual square tiles arranged in a 3x3 grid' at the start. "
-                "3. Describe each tile starting with 'Tile 1: [description]', 'Tile 2: [description]'. "
-                "4. Mention 'thick white borders' or 'rose gold frames' between every tile to prevent blending. "
-                "5. Use a consistent artistic style (e.g., Soft Watercolor or Flat Vector) so they look like a set. "
-                "6. ABSOLUTELY NO TEXT OR NUMBERS."
-            )
-        },
-        {
-            "role": "user",
-            # Updated User Prompt
-            "content": f"""Generate a 3x3 grid collage for {name}. 
-            Each of the 9 squares must be a different composition:
-            - Some should be close-ups of objects (e.g., a laptop, a passport, a heart).
-            - Some should be wide landscapes.
-            - Some should be symbolic illustrations.
-            This prevents the image from looking repetitive. 
+    # Map your 9 questions to a list
+    keys = ['skill', 'role', 'strengths', 'values', 'place', 'superpower', 'outside_work', 'cause', 'future_self']
+    topics = [form_data.get(k, "My Future") for k in keys]
 
-            Panels to include:
+    try:
+        # Fire all 9 requests at once (Parallel)
+        tasks = [fetch_panel(client, t, name) for t in topics]
+        image_b64s = await asyncio.gather(*tasks)
+        
+        # Stitch them together
+        images = [Image.open(io.BytesIO(base64.b64decode(b64))) for b64 in image_b64s]
+        
+        # 3x3 Grid (Each cell is 512px, Total 1536px)
+        grid_size = 512 * 3
+        final_grid = Image.new('RGB', (grid_size, grid_size), color=(255, 245, 240)) # Peach background
 
-            Panel 1 (top-left): Illustrate this skill - {form_data.get('skill', '')}
-            Panel 2 (top-center): Illustrate this dream role - {form_data.get('role', '')}
-            Panel 3 (top-right): Illustrate these strengths - {form_data.get('strengths', '')}
-            Panel 4 (mid-left): Illustrate these values - {form_data.get('values', '')}
-            Panel 5 (mid-center): Illustrate this dream place - {form_data.get('place', '')}
-            Panel 6 (mid-right): Illustrate this superpower - {form_data.get('superpower', '')}
-            Panel 7 (bottom-left): Illustrate this goal - {form_data.get('outside_work', '')}
-            Panel 8 (bottom-center): Illustrate this cause - {form_data.get('cause', '')}
-            Panel 9 (bottom-right): Illustrate this feeling - {form_data.get('future_self', '')}
+        for i, img in enumerate(images):
+            x = (i % 3) * 512
+            y = (i // 3) * 512
+            final_grid.paste(img, (x, y))
 
-            CRITICAL: NO text, NO words, NO labels anywhere in the image.
-            Pure illustrations only. Each panel must be very specific to the answer given.
-            Make it feel personal, warm, feminine and deeply inspiring.
-            Soft pink, peach, gold and purple tones throughout.
-            Perfect for a Women's Day vision board."""
-        }
-    ]
+        # Convert to final Base64
+        buffered = io.BytesIO()
+        final_grid.save(buffered, format="JPEG", quality=85)
+        image_url = f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
-    text_response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=prompt_messages,
-        max_tokens=500
-    )
-    image_prompt = text_response.choices[0].message.content
-    print(f"Generated prompt: {image_prompt}")
+    except Exception as e:
+        print(f"Error: {e}")
+        conn.close()
+        raise HTTPException(status_code=500, detail="Vision Board generation failed. Please try again.")
 
-    # Step 2 — GPT Image 1 generates the vision board
-    image_response = client.images.generate(
-        model="gpt-image-1",
-        prompt=image_prompt,
-        size="1024x1024",
-        quality="medium",
-        n=1,
-    )
-
-    # GPT Image 1 returns base64
-    image_base64 = image_response.data[0].b64_json
-    image_url = f"data:image/png;base64,{image_base64}"
-
-    print("Vision board image generated successfully!")
-
-    # Save board to database
+    # Save to database
     title = f"{user['name']}'s Vision Board"
     conn.execute(
         "INSERT INTO vision_boards (user_id, title, form_data, image_urls) VALUES (?, ?, ?, ?)",
         (user_id, title, json.dumps(form_data), json.dumps([image_url]))
     )
-
-    # Decrease attempts
-    conn.execute(
-        "UPDATE users SET attempts_remaining = attempts_remaining - 1 WHERE id = ?",
-        (user_id,)
-    )
+    conn.execute("UPDATE users SET attempts_remaining = attempts_remaining - 1 WHERE id = ?", (user_id,))
     conn.commit()
-
-    updated_user = conn.execute(
-        "SELECT attempts_remaining FROM users WHERE id = ?", (user_id,)
-    ).fetchone()
+    
+    updated_user = conn.execute("SELECT attempts_remaining FROM users WHERE id = ?", (user_id,)).fetchone()
     conn.close()
 
     return {
