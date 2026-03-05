@@ -256,9 +256,6 @@ async def fetch_image_as_base64(index: int) -> str:
         print(f"Error fetching image {index}: {e}")
         return ""
 
-
-@app.post("/boards/generate")
-# --- HELPER: Logic for individual panel generation ---
 async def fetch_panel(client, topic, name):
     # Short, focused prompt for better DALL-E 2 results
     prompt = (
@@ -279,7 +276,6 @@ async def fetch_panel(client, topic, name):
 
 @app.post("/boards/generate")
 async def generate_board(board_data: VisionBoardRequest, user_id: int = Depends(get_current_user)):
-    form_data = board_data.model_dump()
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
 
@@ -290,54 +286,53 @@ async def generate_board(board_data: VisionBoardRequest, user_id: int = Depends(
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     name = user["name"].split()[0]
 
-    # Map your 9 questions to a list
-    keys = ['skill', 'role', 'strengths', 'values', 'place', 'superpower', 'outside_work', 'cause', 'future_self']
-    topics = [form_data.get(k, "My Future") for k in keys]
+    topics = [
+        board_data.skill, board_data.role, board_data.strengths,
+        board_data.values, board_data.place, board_data.superpower,
+        board_data.outside_work, board_data.cause, board_data.future_self
+    ]
 
     try:
-        # Fire all 9 requests at once (Parallel)
-        tasks = [fetch_panel(client, t, name) for t in topics]
+        # CRITICAL: Pass client, topic, and name to the helper
+        tasks = [fetch_panel(client, topic, name) for topic in topics]
         image_b64s = await asyncio.gather(*tasks)
         
-        # Stitch them together
+        # Stitching logic
         images = [Image.open(io.BytesIO(base64.b64decode(b64))) for b64 in image_b64s]
-        
-        # 3x3 Grid (Each cell is 512px, Total 1536px)
         grid_size = 512 * 3
-        final_grid = Image.new('RGB', (grid_size, grid_size), color=(255, 245, 240)) # Peach background
+        final_grid = Image.new('RGB', (grid_size, grid_size), color=(255, 245, 240))
 
         for i, img in enumerate(images):
             x = (i % 3) * 512
             y = (i // 3) * 512
             final_grid.paste(img, (x, y))
 
-        # Convert to final Base64
         buffered = io.BytesIO()
         final_grid.save(buffered, format="JPEG", quality=85)
         image_url = f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error during generation: {e}")
         conn.close()
-        raise HTTPException(status_code=500, detail="Vision Board generation failed. Please try again.")
+        raise HTTPException(status_code=500, detail="Failed to generate images.")
 
-    # Save to database
+    # Save to DB
     title = f"{user['name']}'s Vision Board"
     conn.execute(
         "INSERT INTO vision_boards (user_id, title, form_data, image_urls) VALUES (?, ?, ?, ?)",
-        (user_id, title, json.dumps(form_data), json.dumps([image_url]))
+        (user_id, title, json.dumps(board_data.model_dump()), json.dumps([image_url]))
     )
     conn.execute("UPDATE users SET attempts_remaining = attempts_remaining - 1 WHERE id = ?", (user_id,))
     conn.commit()
     
-    updated_user = conn.execute("SELECT attempts_remaining FROM users WHERE id = ?", (user_id,)).fetchone()
+    attempts = conn.execute("SELECT attempts_remaining FROM users WHERE id = ?", (user_id,)).fetchone()[0]
     conn.close()
 
     return {
         "title": title,
         "image_urls": [image_url],
-        "attempts_remaining": updated_user["attempts_remaining"],
-        "form_data": form_data,
+        "attempts_remaining": attempts,
+        "form_data": board_data.model_dump(),
     }
 
 @app.get("/")
