@@ -104,6 +104,17 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_
 
 
 # SCHEMAS
+class VisionBoardRequest(BaseModel):
+    skill: str
+    role: str
+    strengths: str
+    values: str
+    place: str
+    superpower: str
+    outside_work: str
+    cause: str
+    future_self: str
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -267,8 +278,8 @@ async def fetch_panel(client, topic, name):
     return response.data[0].b64_json
 
 @app.post("/boards/generate")
-async def generate_board(request: Request, user_id: int = Depends(get_current_user)):
-    form_data = await request.json()
+async def generate_board(board_data: VisionBoardRequest, user_id: int = Depends(get_current_user)):
+    form_data = board_data.model_dump()
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
 
